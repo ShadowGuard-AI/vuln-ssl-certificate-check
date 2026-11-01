@@ -45,6 +45,9 @@ def parse_target(raw, cli_port=None):
         except ValueError:
             raise ValueError(f"Invalid port in target: {raw}")
     else:
+        # For a bare host I cut everything after the first slash before
+        # parsing. A path typed without a scheme is thrown away, not
+        # mistaken for part of the host name.
         parsed = urllib.parse.urlsplit("//" + text.split("/")[0])
         host = parsed.hostname
         try:
@@ -95,6 +98,9 @@ def get_certificate_info(hostname, port=443):
             return None
         # With verification off, the parsed form is empty, so the DER bytes
         # are decoded locally into the usual certificate dictionary.
+        # Decoding goes through a private helper and a real temp file
+        # because that helper only takes a path. The file holds a public
+        # certificate, and the finally below removes it on every route.
         pem = ssl.DER_cert_to_PEM_cert(der)
         handle, path = tempfile.mkstemp(suffix=".pem")
         try:
@@ -144,6 +150,9 @@ def check_certificate_validity(cert, now=None):
         now = datetime.datetime.now(datetime.timezone.utc)
     if now < not_before:
         return {"status": "not_yet_valid", "days_until_valid": int((not_before - now).total_seconds() / 86400)}
+    # int() truncates toward zero, so a certificate that expired an hour
+    # ago reports 0 days rather than 1. The status word is exact; the day
+    # count beside it is a whole day floor in spirit only.
     remaining_days = int((not_after - now).total_seconds() / 86400)
     if now > not_after:
         return {"status": "expired", "remaining_days": remaining_days}
@@ -278,6 +287,9 @@ def main():
     for finding in certificate_findings(cert, hostname):
         print(f"Finding: {finding}")
 
+    # The cipher comes from a second, separate connection. Servers that
+    # negotiate differently per connection can hand me a cipher that was
+    # never used to fetch the certificate printed above.
     used_ciphers = get_certificate_ciphers(hostname, port)
     if used_ciphers:
         print("Negotiated cipher of this connection:")
