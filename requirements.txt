@@ -1,1 +1,1 @@
-requests>=2.31.0
+# Standard library only: this tool has no third-party requirements.
